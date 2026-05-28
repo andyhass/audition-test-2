@@ -103,7 +103,7 @@ curl -X GET http://localhost:3000/api/cron/sync-events \
   -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)"
 ```
 
-> The reviewer's wallet must hold Base Sepolia ETH to cover gas for the new deployment, and Base Sepolia USDC to deposit liquidity. Both are available from the faucets listed in [Prerequisites](#prerequisites).
+> The admin wallet (included in `.env.local` via `ADMIN_PRIVATE_KEY`) covers gas for the deployment and USDC for liquidity — no additional funding is required for the reset. Your personal MetaMask wallet still needs Base Sepolia ETH and USDC to place bets.
 
 ---
 
