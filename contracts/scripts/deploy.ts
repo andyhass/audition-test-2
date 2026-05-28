@@ -4,8 +4,10 @@ import hre from "hardhat"
 const USDC_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 
 async function main() {
+  const [deployer] = await hre.ethers.getSigners()
+  console.log(`Deploying from: ${deployer.address}`)
   console.log("Deploying BettingPlatform...")
-  const BettingPlatform = await hre.ethers.getContractFactory("BettingPlatform")
+  const BettingPlatform = await hre.ethers.getContractFactory("BettingPlatform", deployer)
   const platform = await BettingPlatform.deploy(USDC_BASE_SEPOLIA)
   await platform.waitForDeployment()
   const address = await platform.getAddress()
