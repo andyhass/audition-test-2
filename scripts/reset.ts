@@ -29,7 +29,7 @@ async function reset() {
   const contractAddress = match[1]
 
   // 3. Update .env.local
-  console.log("3/4  Updating .env.local…")
+  console.log("3/5  Updating .env.local…")
   const envPath = resolve(ROOT, ".env.local")
   let envContent = readFileSync(envPath, "utf8")
   if (envContent.includes("NEXT_PUBLIC_CONTRACT_ADDRESS=")) {
@@ -43,8 +43,19 @@ async function reset() {
   writeFileSync(envPath, envContent)
   console.log(`     ✓ NEXT_PUBLIC_CONTRACT_ADDRESS=${contractAddress}\n`)
 
-  // 4. Sync events (requires dev server to be running)
-  console.log("4/4  Syncing events…")
+  // 4. Deposit liquidity into new contract
+  console.log("4/5  Depositing liquidity…")
+  const depositOutput = execSync("pnpm deposit:sepolia", {
+    cwd: resolve(ROOT, "contracts"),
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "inherit"],
+    env: { ...process.env, NEXT_PUBLIC_CONTRACT_ADDRESS: contractAddress },
+  })
+  depositOutput.trim().split("\n").forEach((line) => console.log(`     ${line}`))
+  console.log()
+
+  // 5. Sync events (requires dev server to be running)
+  console.log("5/5  Syncing events…")
   const cronSecret = process.env.CRON_SECRET
   if (!cronSecret) {
     console.log("     ⚠  CRON_SECRET not set — skipping sync. Run manually after starting the dev server.")
@@ -62,8 +73,6 @@ async function reset() {
   }
 
   console.log("\n✅  Reset complete!")
-  console.log("\nRemember to deposit liquidity into the new contract:")
-  console.log("    cd contracts && pnpm deposit:sepolia\n")
 
   process.exit(0)
 }

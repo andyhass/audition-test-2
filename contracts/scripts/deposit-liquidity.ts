@@ -46,9 +46,14 @@ async function main() {
   console.log("Depositing liquidity...");
   const depositTx = await platform.depositLiquidity(DEPOSIT_AMOUNT_USDC);
   await depositTx.wait();
-  console.log(
-    `Deposited ${Number(DEPOSIT_AMOUNT_USDC) / 1e6} USDC into BettingPlatform.`,
-  );
+
+  const depositedUsdc = Number(DEPOSIT_AMOUNT_USDC) / 1e6;
+  const usdcAfter = await usdc.balanceOf(deployer.address);
+  const ethAfter = await hre.ethers.provider.getBalance(deployer.address);
+
+  console.log(`\nDeposited:        ${depositedUsdc} USDC`);
+  console.log(`USDC balance:     ${Number(usdcAfter) / 1e6} USDC`);
+  console.log(`ETH balance:      ${Number(hre.ethers.formatEther(ethAfter)).toFixed(6)} ETH`);
 }
 
 main().catch((err) => {
