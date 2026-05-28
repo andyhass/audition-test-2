@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi"
 import { parseUnits } from "viem"
 import { BETTING_PLATFORM_ABI } from "@/lib/contracts/abi"
@@ -62,6 +62,25 @@ export function BetModal({ event, onClose }: BetModalProps) {
       args: [BigInt(event.onChainEventId), side, parseUnits(amount, 6)],
     })
   }
+
+  useEffect(() => {
+    if (!betSuccess || !betTxHash || side === null || !event.id) return
+    const oddsNum = side === 0
+      ? parseFloat(event.homeOdds ?? "0")
+      : parseFloat(event.awayOdds ?? "0")
+
+    fetch("/api/bets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        txHash: betTxHash,
+        eventId: event.id,
+        side: side === 0 ? "home" : "away",
+        amountUsdc: amount,
+        oddsSnapshot: oddsNum.toFixed(4),
+      }),
+    }).catch(console.error)
+  }, [betSuccess])
 
   if (betSuccess) {
     return (

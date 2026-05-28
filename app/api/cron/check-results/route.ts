@@ -22,7 +22,7 @@ function toResult(homeScore: number, awayScore: number): "home_win" | "away_win"
   return "draw"
 }
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 })
   }

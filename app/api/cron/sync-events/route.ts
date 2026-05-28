@@ -21,6 +21,15 @@ interface SportsDBEvent {
   intEventFBAway?: string
 }
 
+// Returns decimal odds as string for DB storage (e.g., "1.8000")
+function parseDecimalOdds(odds: string | undefined): string | null {
+  if (!odds) return null
+  const n = parseFloat(odds)
+  if (isNaN(n) || n <= 0) return null
+  return n.toFixed(4)
+}
+
+// Returns basis points for on-chain (e.g., 18000n for 1.80x)
 function decimalOddsToBasePts(odds: string | undefined): bigint | null {
   if (!odds) return null
   const n = parseFloat(odds)
@@ -28,7 +37,7 @@ function decimalOddsToBasePts(odds: string | undefined): bigint | null {
   return BigInt(Math.round(n * 10000))
 }
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   if (!verifyCronSecret(request)) {
     return new Response("Unauthorized", { status: 401 })
   }
@@ -50,8 +59,10 @@ export async function POST(request: Request) {
 
   for (const raw of rawEvents) {
     const matchTime = new Date(`${raw.dateEvent}T${raw.strTime ?? "00:00:00"}Z`)
-    const homeOdds = decimalOddsToBasePts(raw.intEventFBHome?.toString())
-    const awayOdds = decimalOddsToBasePts(raw.intEventFBAway?.toString())
+    const homeOddsDb = parseDecimalOdds(raw.intEventFBHome?.toString())
+    const awayOddsDb = parseDecimalOdds(raw.intEventFBAway?.toString())
+    const homeOddsBp = decimalOddsToBasePts(raw.intEventFBHome?.toString())
+    const awayOddsBp = decimalOddsToBasePts(raw.intEventFBAway?.toString())
 
     // Upsert into DB
     const [existing] = await db
@@ -69,8 +80,8 @@ export async function POST(request: Request) {
           home_team: raw.strHomeTeam,
           away_team: raw.strAwayTeam,
           match_time: matchTime,
-          home_odds: homeOdds?.toString(),
-          away_odds: awayOdds?.toString(),
+          home_odds: homeOddsDb,
+          away_odds: awayOddsDb,
         })
         .returning()
 
@@ -80,8 +91,8 @@ export async function POST(request: Request) {
           const onChainId = await createEventOnChain({
             homeTeam: raw.strHomeTeam,
             awayTeam: raw.strAwayTeam,
-            homeOdds: homeOdds ?? 0n,
-            awayOdds: awayOdds ?? 0n,
+            homeOdds: homeOddsBp ?? 0n,
+            awayOdds: awayOddsBp ?? 0n,
             startTime: BigInt(Math.floor(matchTime.getTime() / 1000)),
             externalId: raw.idEvent,
           })
@@ -94,14 +105,14 @@ export async function POST(request: Request) {
         }
       }
       created++
-    } else if (homeOdds && awayOdds && existing.on_chain_event_id) {
+    } else if (homeOddsDb && awayOddsDb && existing.on_chain_event_id) {
       // Update odds if changed
       await db
         .update(sports_events)
-        .set({ home_odds: homeOdds.toString(), away_odds: awayOdds.toString() })
+        .set({ home_odds: homeOddsDb, away_odds: awayOddsDb })
         .where(eq(sports_events.external_id, raw.idEvent))
       try {
-        await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOdds, awayOdds)
+        await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOddsBp!, awayOddsBp!)
       } catch (err) {
         console.error(`Failed to update odds for event ${raw.idEvent}:`, err)
       }
