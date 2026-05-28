@@ -51,6 +51,8 @@ export function EventCard({ event, onBet, userTimezone = "UTC" }: EventCardProps
               ● LIVE
             </span>
           )}
+          <span className="text-xs text-zinc-500">{event.league}</span>
+          <span className="text-zinc-700 text-xs">·</span>
           <span className="text-xs text-zinc-500">{formatted}</span>
         </div>
         <div className="flex items-center gap-3">
