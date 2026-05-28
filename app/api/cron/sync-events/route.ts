@@ -104,15 +104,36 @@ export async function GET(request: Request) {
           }
         }
         created++
-      } else if (existing.on_chain_event_id) {
+      } else {
+        // Event exists in DB — update odds and register on-chain if not yet done
         await db
           .update(sports_events)
           .set({ home_odds: homeOddsDb, away_odds: awayOddsDb })
           .where(eq(sports_events.external_id, raw.idEvent))
-        try {
-          await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOddsBp, awayOddsBp)
-        } catch (err) {
-          console.error(`Failed to update odds for event ${raw.idEvent}:`, err)
+
+        if (!existing.on_chain_event_id && process.env.NEXT_PUBLIC_CONTRACT_ADDRESS) {
+          try {
+            const onChainId = await createEventOnChain({
+              homeTeam: existing.home_team,
+              awayTeam: existing.away_team,
+              homeOdds: homeOddsBp,
+              awayOdds: awayOddsBp,
+              startTime: BigInt(Math.floor(existing.match_time.getTime() / 1000)),
+              externalId: existing.external_id,
+            })
+            await db
+              .update(sports_events)
+              .set({ on_chain_event_id: onChainId.toString() })
+              .where(eq(sports_events.external_id, raw.idEvent))
+          } catch (err) {
+            console.error(`Failed to register event ${raw.idEvent} on-chain:`, err)
+          }
+        } else if (existing.on_chain_event_id) {
+          try {
+            await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOddsBp, awayOddsBp)
+          } catch (err) {
+            console.error(`Failed to update odds for event ${raw.idEvent}:`, err)
+          }
         }
         updated++
       }
