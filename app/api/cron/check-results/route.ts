@@ -109,7 +109,7 @@ export async function GET(request: Request) {
   // This handles manual settlements (via script) and any missed cron runs
   if (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS) {
     const blockNumber = await publicClient.getBlockNumber()
-    const fromBlock = blockNumber > 10000n ? blockNumber - 10000n : 0n
+    const fromBlock = blockNumber > 2000n ? blockNumber - 2000n : 0n
 
     const settledLogs = await publicClient.getLogs({
       address: CONTRACT_ADDRESS,
