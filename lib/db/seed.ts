@@ -3,12 +3,12 @@ import { db } from "./index"
 import { leagues } from "./schema"
 
 async function seed() {
-  await db.insert(leagues).values({
-    name: "English Premier League",
-    sport: "soccer",
-    external_id: "4328",
-  }).onConflictDoNothing()
-  console.log("Seeded EPL league")
+  await db.insert(leagues).values([
+    { name: "English Premier League", sport: "soccer",   external_id: "4328" },
+    { name: "UEFA Champions League",  sport: "soccer",   external_id: "4480" },
+    { name: "MLS",                    sport: "soccer",   external_id: "4346" },
+  ]).onConflictDoNothing()
+  console.log("Seeded leagues: EPL, UCL, MLS")
   process.exit(0)
 }
 
