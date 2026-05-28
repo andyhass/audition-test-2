@@ -13,6 +13,7 @@ import { SessionProvider } from "next-auth/react"
 import { useState } from "react"
 import { SiweMessage } from "siwe"
 import { signIn, signOut, getCsrfToken } from "next-auth/react"
+
 import { wagmiConfig } from "@/lib/wagmi/config"
 
 import "@rainbow-me/rainbowkit/styles.css"
@@ -43,12 +44,12 @@ export function Providers({
         version: "1",
         chainId,
         nonce,
-      })
+      }).prepareMessage()
     },
 
     verify: async ({ message, signature }) => {
       const result = await signIn("credentials", {
-        message: JSON.stringify(message),
+        message,
         signature,
         redirect: false,
       })

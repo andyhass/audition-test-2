@@ -14,9 +14,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       authorize: async (credentials) => {
         try {
-          const message = new SiweMessage(
-            JSON.parse(credentials.message as string)
-          )
+          const message = new SiweMessage(credentials.message as string)
           const result = await message.verify({
             signature: credentials.signature as string,
           })
