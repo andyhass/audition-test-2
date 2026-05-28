@@ -6,7 +6,8 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
-    "deposit:sepolia": "hardhat run scripts/deposit-liquidity.ts --network baseSepolia"
+    "deposit:sepolia": "hardhat run scripts/deposit-liquidity.ts --network baseSepolia",
+    "settle:sepolia": "hardhat run scripts/settle-event.ts --network baseSepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
