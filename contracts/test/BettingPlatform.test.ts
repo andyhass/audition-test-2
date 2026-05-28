@@ -173,4 +173,74 @@ describe("BettingPlatform", function () {
       ).to.be.revertedWith("Amount must be positive")
     })
   })
+
+  describe("settlement", function () {
+    async function withBetsFixture() {
+      const base = await loadFixture(deployFixture)
+      const { platform, usdc, owner, bettor, other } = base
+      const startTime = BigInt(Math.floor(Date.now() / 1000) + 7200)
+
+      await usdc.mint(owner.address, 10000n * 10n ** 6n)
+      await usdc.approve(await platform.getAddress(), 10000n * 10n ** 6n)
+      await platform.depositLiquidity(5000n * 10n ** 6n)
+      await platform.createEvent("Arsenal", "Chelsea", 18000n, 21000n, startTime, "1234567")
+
+      await usdc.mint(bettor.address, 500n * 10n ** 6n)
+      await usdc.connect(bettor).approve(await platform.getAddress(), 500n * 10n ** 6n)
+      await platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n) // HOME bet
+
+      await usdc.mint(other.address, 500n * 10n ** 6n)
+      await usdc.connect(other).approve(await platform.getAddress(), 500n * 10n ** 6n)
+      await platform.connect(other).placeBet(0n, 1, 50n * 10n ** 6n)  // AWAY bet
+
+      return { ...base, startTime }
+    }
+
+    it("pays home winner at snapshotted odds on home win", async function () {
+      const { platform, router, usdc, bettor } = await loadFixture(withBetsFixture)
+      const tx = await platform.requestSettlement(0n)
+      const receipt = await tx.wait()
+      const event = receipt!.logs.find((l: any) => {
+        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
+      })
+      const parsed = platform.interface.parseLog(event!)!
+      const requestId = parsed.args.requestId
+
+      const bettorBefore = await usdc.balanceOf(bettor.address)
+      // 0x00 = home win
+      await router.fulfillRequest(requestId, "0x00")
+      const bettorAfter = await usdc.balanceOf(bettor.address)
+      // 100 USDC * 18000 / 10000 = 180 USDC payout
+      expect(bettorAfter - bettorBefore).to.equal(180n * 10n ** 6n)
+    })
+
+    it("refunds both sides on draw", async function () {
+      const { platform, router, usdc, bettor, other } = await loadFixture(withBetsFixture)
+      const tx = await platform.requestSettlement(0n)
+      const receipt = await tx.wait()
+      const event = receipt!.logs.find((l: any) => {
+        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
+      })
+      const requestId = platform.interface.parseLog(event!)!.args.requestId
+
+      const bettorBefore = await usdc.balanceOf(bettor.address)
+      const otherBefore = await usdc.balanceOf(other.address)
+      // 0x02 = draw
+      await router.fulfillRequest(requestId, "0x02")
+      expect(await usdc.balanceOf(bettor.address) - bettorBefore).to.equal(100n * 10n ** 6n)
+      expect(await usdc.balanceOf(other.address) - otherBefore).to.equal(50n * 10n ** 6n)
+    })
+
+    it("emits EventSettled", async function () {
+      const { platform, router } = await loadFixture(withBetsFixture)
+      const tx = await platform.requestSettlement(0n)
+      const receipt = await tx.wait()
+      const event = receipt!.logs.find((l: any) => {
+        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
+      })
+      const requestId = platform.interface.parseLog(event!)!.args.requestId
+      await expect(router.fulfillRequest(requestId, "0x01"))
+        .to.emit(platform, "EventSettled").withArgs(0n, 1)
+    })
+  })
 })

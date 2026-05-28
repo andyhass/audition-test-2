@@ -137,9 +137,53 @@ contract BettingPlatform is FunctionsClient, Ownable {
         return eventBets[eventId];
     }
 
+    function requestSettlement(uint256 eventId) external onlyOwner {
+        SportEvent storage evt = events[eventId];
+        require(
+            evt.status == EventStatus.OPEN || evt.status == EventStatus.LOCKED,
+            "Already settled"
+        );
+        evt.status = EventStatus.LOCKED;
+
+        FunctionsRequest.Request memory req;
+        req.initializeRequestForInlineJavaScript(functionsSource);
+        string[] memory args = new string[](1);
+        args[0] = evt.externalId;
+        req.setArgs(args);
+
+        bytes32 requestId = _sendRequest(req.encodeCBOR(), subscriptionId, GAS_LIMIT, DON_ID);
+        requestToEvent[requestId] = eventId;
+        emit SettlementRequested(eventId, requestId);
+    }
+
     function fulfillRequest(
-        bytes32, /* requestId */
-        bytes memory, /* response */
+        bytes32 requestId,
+        bytes memory response,
         bytes memory /* err */
-    ) internal override {}
+    ) internal override {
+        uint256 eventId = requestToEvent[requestId];
+        uint8 result = uint8(response[0]); // 0=home win, 1=away win, 2=draw
+
+        events[eventId].status = EventStatus.SETTLED;
+        Bet[] storage bets = eventBets[eventId];
+
+        for (uint256 i = 0; i < bets.length; i++) {
+            Bet storage bet = bets[i];
+            if (bet.settled) continue;
+            bet.settled = true;
+
+            if (result == 2) {
+                usdc.safeTransfer(bet.bettor, bet.amount);
+            } else {
+                bool won = (result == 0 && bet.side == BetSide.HOME) ||
+                           (result == 1 && bet.side == BetSide.AWAY);
+                if (won) {
+                    uint256 payout = (bet.amount * bet.oddsSnapshot) / 10_000;
+                    usdc.safeTransfer(bet.bettor, payout);
+                }
+            }
+        }
+
+        emit EventSettled(eventId, result);
+    }
 }
