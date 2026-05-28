@@ -49,7 +49,9 @@ export default async function Home() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-lg font-semibold text-white">Active Matches</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">{events.length} upcoming</p>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              {[...new Set(events.map((e) => e.league))].join(" · ")}
+            </p>
           </div>
         </div>
 
