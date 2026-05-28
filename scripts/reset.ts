@@ -5,16 +5,14 @@ import { execSync } from "child_process"
 import { readFileSync, writeFileSync } from "fs"
 import { resolve } from "path"
 import { db } from "../lib/db/index"
-import { bet_cache, sports_events, users } from "../lib/db/schema"
+import { sql } from "drizzle-orm"
 
 const ROOT = process.cwd()
 
 async function reset() {
   // 1. Truncate DB
   console.log("1/4  Truncating database…")
-  await db.delete(bet_cache)
-  await db.delete(sports_events)
-  await db.delete(users)
+  await db.execute(sql`TRUNCATE bet_cache, sports_events, users RESTART IDENTITY CASCADE`)
   console.log("     ✓ bet_cache, sports_events, users cleared\n")
 
   // 2. Deploy contract
