@@ -18,10 +18,6 @@ export const BETTING_PLATFORM_ABI = [
     { name: "amount", type: "uint256", indexed: false },
     { name: "oddsSnapshot", type: "uint256", indexed: false },
   ]},
-  { type: "event", name: "SettlementRequested", inputs: [
-    { name: "eventId", type: "uint256", indexed: true },
-    { name: "requestId", type: "bytes32", indexed: false },
-  ]},
   { type: "event", name: "EventSettled", inputs: [
     { name: "eventId", type: "uint256", indexed: true },
     { name: "result", type: "uint8", indexed: false },
@@ -58,8 +54,9 @@ export const BETTING_PLATFORM_ABI = [
     inputs: [{ name: "eventId", type: "uint256" }, { name: "side", type: "uint8" }, { name: "amount", type: "uint256" }],
     outputs: []
   },
-  { type: "function", name: "requestSettlement", stateMutability: "nonpayable",
-    inputs: [{ name: "eventId", type: "uint256" }], outputs: []
+  { type: "function", name: "settle", stateMutability: "nonpayable",
+    inputs: [{ name: "eventId", type: "uint256" }, { name: "result", type: "uint8" }],
+    outputs: []
   },
   { type: "function", name: "withdrawHouseFunds", stateMutability: "nonpayable", inputs: [], outputs: [] },
 ] as const

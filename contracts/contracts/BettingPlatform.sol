@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
-import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract BettingPlatform is FunctionsClient, Ownable {
-    using FunctionsRequest for FunctionsRequest.Request;
+contract BettingPlatform is Ownable {
     using SafeERC20 for IERC20;
 
     enum EventStatus { OPEN, LOCKED, SETTLED, CANCELLED }
@@ -18,33 +15,26 @@ contract BettingPlatform is FunctionsClient, Ownable {
         uint256 id;
         string homeTeam;
         string awayTeam;
-        uint256 homeOdds;   // basis points: 18000 = 1.80x
+        uint256 homeOdds;
         uint256 awayOdds;
         uint256 startTime;
         EventStatus status;
-        string externalId;  // TheSportsDB event ID
+        string externalId;
     }
 
     struct Bet {
         address bettor;
         BetSide side;
-        uint256 amount;         // USDC in 6-decimal units
-        uint256 oddsSnapshot;   // basis points, locked at bet time
+        uint256 amount;
+        uint256 oddsSnapshot;
         bool settled;
     }
 
     IERC20 public immutable usdc;
-    uint64 public subscriptionId;
-    uint32 public constant GAS_LIMIT = 300_000;
-    bytes32 public constant DON_ID =
-        0x66756e2d626173652d7365706f6c69612d310000000000000000000000000000;
-
-    string public functionsSource;
 
     uint256 public nextEventId;
     mapping(uint256 => SportEvent) public events;
     mapping(uint256 => Bet[]) public eventBets;
-    mapping(bytes32 => uint256) public requestToEvent;
 
     event EventCreated(uint256 indexed eventId, string homeTeam, string awayTeam);
     event OddsUpdated(uint256 indexed eventId, uint256 homeOdds, uint256 awayOdds);
@@ -55,18 +45,10 @@ contract BettingPlatform is FunctionsClient, Ownable {
         uint256 amount,
         uint256 oddsSnapshot
     );
-    event SettlementRequested(uint256 indexed eventId, bytes32 requestId);
     event EventSettled(uint256 indexed eventId, uint8 result);
 
-    constructor(
-        address router,
-        address _usdc,
-        uint64 _subscriptionId,
-        string memory _functionsSource
-    ) FunctionsClient(router) Ownable(msg.sender) {
+    constructor(address _usdc) Ownable(msg.sender) {
         usdc = IERC20(_usdc);
-        subscriptionId = _subscriptionId;
-        functionsSource = _functionsSource;
     }
 
     function depositLiquidity(uint256 amount) external onlyOwner {
@@ -108,10 +90,6 @@ contract BettingPlatform is FunctionsClient, Ownable {
         emit OddsUpdated(eventId, homeOdds, awayOdds);
     }
 
-    function withdrawHouseFunds() external onlyOwner {
-        usdc.safeTransfer(owner(), usdc.balanceOf(address(this)));
-    }
-
     function placeBet(uint256 eventId, BetSide side, uint256 amount) external {
         SportEvent storage evt = events[eventId];
         require(evt.status == EventStatus.OPEN, "Betting not open");
@@ -119,9 +97,7 @@ contract BettingPlatform is FunctionsClient, Ownable {
         require(amount > 0, "Amount must be positive");
 
         uint256 odds = side == BetSide.HOME ? evt.homeOdds : evt.awayOdds;
-
         usdc.safeTransferFrom(msg.sender, address(this), amount);
-
         eventBets[eventId].push(Bet({
             bettor: msg.sender,
             side: side,
@@ -129,42 +105,16 @@ contract BettingPlatform is FunctionsClient, Ownable {
             oddsSnapshot: odds,
             settled: false
         }));
-
         emit BetPlaced(eventId, msg.sender, side, amount, odds);
     }
 
-    function getBets(uint256 eventId) external view returns (Bet[] memory) {
-        return eventBets[eventId];
-    }
-
-    function requestSettlement(uint256 eventId) external onlyOwner {
+    function settle(uint256 eventId, uint8 result) external onlyOwner {
         SportEvent storage evt = events[eventId];
         require(
             evt.status == EventStatus.OPEN || evt.status == EventStatus.LOCKED,
             "Already settled"
         );
-        evt.status = EventStatus.LOCKED;
-
-        FunctionsRequest.Request memory req;
-        req.initializeRequestForInlineJavaScript(functionsSource);
-        string[] memory args = new string[](1);
-        args[0] = evt.externalId;
-        req.setArgs(args);
-
-        bytes32 requestId = _sendRequest(req.encodeCBOR(), subscriptionId, GAS_LIMIT, DON_ID);
-        requestToEvent[requestId] = eventId;
-        emit SettlementRequested(eventId, requestId);
-    }
-
-    function fulfillRequest(
-        bytes32 requestId,
-        bytes memory response,
-        bytes memory /* err */
-    ) internal override {
-        uint256 eventId = requestToEvent[requestId];
-        uint8 result = uint8(response[0]); // 0=home win, 1=away win, 2=draw
-
-        events[eventId].status = EventStatus.SETTLED;
+        evt.status = EventStatus.SETTLED;
         Bet[] storage bets = eventBets[eventId];
 
         for (uint256 i = 0; i < bets.length; i++) {
@@ -185,5 +135,13 @@ contract BettingPlatform is FunctionsClient, Ownable {
         }
 
         emit EventSettled(eventId, result);
+    }
+
+    function withdrawHouseFunds() external onlyOwner {
+        usdc.safeTransfer(owner(), usdc.balanceOf(address(this)));
+    }
+
+    function getBets(uint256 eventId) external view returns (Bet[] memory) {
+        return eventBets[eventId];
     }
 }

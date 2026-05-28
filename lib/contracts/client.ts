@@ -58,12 +58,12 @@ export async function updateOddsOnChain(eventId: bigint, homeOdds: bigint, awayO
   await publicClient.waitForTransactionReceipt({ hash })
 }
 
-export async function requestSettlementOnChain(eventId: bigint) {
+export async function settleEventOnChain(eventId: bigint, result: number) {
   const hash = await walletClient.writeContract({
     address: CONTRACT_ADDRESS,
     abi: BETTING_PLATFORM_ABI,
-    functionName: "requestSettlement",
-    args: [eventId],
+    functionName: "settle",
+    args: [eventId, result],
   })
   await publicClient.waitForTransactionReceipt({ hash })
 }

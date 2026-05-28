@@ -9,27 +9,10 @@ describe("BettingPlatform", function () {
     const MockERC20 = await hre.ethers.getContractFactory("MockERC20")
     const usdc = await MockERC20.deploy("USD Coin", "USDC", 6)
 
-    const MockRouter = await hre.ethers.getContractFactory("MockFunctionsRouter")
-    const router = await MockRouter.deploy()
-
-    const source = `
-      const id = args[0];
-      const r = await Functions.makeHttpRequest({url: \`https://www.thesportsdb.com/api/v1/json/3/lookupevent.php?id=\${id}\`});
-      const e = r.data.events[0];
-      if (!e || e.strStatus !== 'Match Finished') throw Error('not finished');
-      const h = parseInt(e.intHomeScore), a = parseInt(e.intAwayScore);
-      return new Uint8Array([h > a ? 0 : a > h ? 1 : 2]);
-    `
-
     const BettingPlatform = await hre.ethers.getContractFactory("BettingPlatform")
-    const platform = await BettingPlatform.deploy(
-      await router.getAddress(),
-      await usdc.getAddress(),
-      1n,
-      source
-    )
+    const platform = await BettingPlatform.deploy(await usdc.getAddress())
 
-    return { platform, usdc, router, owner, bettor, other }
+    return { platform, usdc, owner, bettor, other }
   }
 
   describe("deployment", function () {
@@ -187,60 +170,42 @@ describe("BettingPlatform", function () {
 
       await usdc.mint(bettor.address, 500n * 10n ** 6n)
       await usdc.connect(bettor).approve(await platform.getAddress(), 500n * 10n ** 6n)
-      await platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n) // HOME bet
+      await platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n)
 
       await usdc.mint(other.address, 500n * 10n ** 6n)
       await usdc.connect(other).approve(await platform.getAddress(), 500n * 10n ** 6n)
-      await platform.connect(other).placeBet(0n, 1, 50n * 10n ** 6n)  // AWAY bet
+      await platform.connect(other).placeBet(0n, 1, 50n * 10n ** 6n)
 
       return { ...base, startTime }
     }
 
     it("pays home winner at snapshotted odds on home win", async function () {
-      const { platform, router, usdc, bettor } = await loadFixture(withBetsFixture)
-      const tx = await platform.requestSettlement(0n)
-      const receipt = await tx.wait()
-      const event = receipt!.logs.find((l: any) => {
-        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
-      })
-      const parsed = platform.interface.parseLog(event!)!
-      const requestId = parsed.args.requestId
-
+      const { platform, usdc, bettor } = await loadFixture(withBetsFixture)
       const bettorBefore = await usdc.balanceOf(bettor.address)
-      // 0x00 = home win
-      await router.fulfillRequest(requestId, "0x00")
+      await platform.settle(0n, 0) // 0 = home win
       const bettorAfter = await usdc.balanceOf(bettor.address)
-      // 100 USDC * 18000 / 10000 = 180 USDC payout
       expect(bettorAfter - bettorBefore).to.equal(180n * 10n ** 6n)
     })
 
     it("refunds both sides on draw", async function () {
-      const { platform, router, usdc, bettor, other } = await loadFixture(withBetsFixture)
-      const tx = await platform.requestSettlement(0n)
-      const receipt = await tx.wait()
-      const event = receipt!.logs.find((l: any) => {
-        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
-      })
-      const requestId = platform.interface.parseLog(event!)!.args.requestId
-
+      const { platform, usdc, bettor, other } = await loadFixture(withBetsFixture)
       const bettorBefore = await usdc.balanceOf(bettor.address)
       const otherBefore = await usdc.balanceOf(other.address)
-      // 0x02 = draw
-      await router.fulfillRequest(requestId, "0x02")
+      await platform.settle(0n, 2) // 2 = draw
       expect(await usdc.balanceOf(bettor.address) - bettorBefore).to.equal(100n * 10n ** 6n)
       expect(await usdc.balanceOf(other.address) - otherBefore).to.equal(50n * 10n ** 6n)
     })
 
     it("emits EventSettled", async function () {
-      const { platform, router } = await loadFixture(withBetsFixture)
-      const tx = await platform.requestSettlement(0n)
-      const receipt = await tx.wait()
-      const event = receipt!.logs.find((l: any) => {
-        try { return platform.interface.parseLog(l)?.name === "SettlementRequested" } catch { return false }
-      })
-      const requestId = platform.interface.parseLog(event!)!.args.requestId
-      await expect(router.fulfillRequest(requestId, "0x01"))
+      const { platform } = await loadFixture(withBetsFixture)
+      await expect(platform.settle(0n, 1))
         .to.emit(platform, "EventSettled").withArgs(0n, 1)
+    })
+
+    it("reverts if already settled", async function () {
+      const { platform } = await loadFixture(withBetsFixture)
+      await platform.settle(0n, 0)
+      await expect(platform.settle(0n, 0)).to.be.revertedWith("Already settled")
     })
   })
 })
