@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi"
-import { parseUnits } from "viem"
+import { useWriteContract, useWaitForTransactionReceipt, useReadContract, useAccount } from "wagmi"
+import { parseUnits, formatUnits } from "viem"
 import { BETTING_PLATFORM_ABI } from "@/lib/contracts/abi"
 import type { Event } from "./EventCard"
 
@@ -14,6 +14,11 @@ const USDC_ABI = [
     type: "function", name: "approve", stateMutability: "nonpayable",
     inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }],
     outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function", name: "balanceOf", stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
   },
 ] as const
 
@@ -36,6 +41,17 @@ export function BetModal({ event, onClose }: BetModalProps) {
   const { isSuccess: betSuccess } = useWaitForTransactionReceipt({ hash: betTxHash })
 
   const amountNum = parseFloat(amount) || 0
+
+  const { address } = useAccount()
+  const { data: usdcBalance } = useReadContract({
+    address: USDC_ADDRESS,
+    abi: USDC_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  })
+  const balanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : null
+  const exceedsBalance = balanceNum !== null && amountNum > balanceNum
   const oddsNum = side === 0
     ? parseFloat(event.homeOdds ?? "0")
     : parseFloat(event.awayOdds ?? "0")
@@ -145,8 +161,15 @@ export function BetModal({ event, onClose }: BetModalProps) {
         </div>
 
         {/* Amount */}
-        <p className="text-[11px] uppercase tracking-wide text-zinc-500 mb-2">Bet amount (USDC)</p>
-        <div className="bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Bet amount (USDC)</p>
+          {balanceNum !== null && (
+            <p className="text-[11px] text-zinc-500">
+              Balance: <span className={exceedsBalance ? "text-red-400" : "text-zinc-300"}>{balanceNum.toFixed(2)} USDC</span>
+            </p>
+          )}
+        </div>
+        <div className={`bg-zinc-950 border rounded-xl px-4 py-3 flex items-center justify-between mb-2 ${exceedsBalance ? "border-red-500" : "border-zinc-700"}`}>
           <input
             type="number"
             min="1"
@@ -185,13 +208,18 @@ export function BetModal({ event, onClose }: BetModalProps) {
 
         {/* Action button */}
         {step === "pick" && (
-          <button
-            onClick={handleApprove}
-            disabled={side === null || amountNum <= 0}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-semibold py-3 rounded-xl transition-colors"
-          >
-            Approve USDC
-          </button>
+          <>
+            {exceedsBalance && (
+              <p className="text-red-400 text-xs text-center mb-2">Insufficient USDC balance</p>
+            )}
+            <button
+              onClick={handleApprove}
+              disabled={side === null || amountNum <= 0 || exceedsBalance}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-semibold py-3 rounded-xl transition-colors"
+            >
+              Approve USDC
+            </button>
+          </>
         )}
 
         {step === "approving" && !approveSuccess && (
