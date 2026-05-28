@@ -1,7 +1,8 @@
 import { db } from "@/lib/db"
 import { sports_events, bet_cache } from "@/lib/db/schema"
 import { eq, or } from "drizzle-orm"
-import { settleEventOnChain } from "@/lib/contracts/client"
+import { settleEventOnChain, publicClient, CONTRACT_ADDRESS } from "@/lib/contracts/client"
+import { parseAbiItem } from "viem"
 
 function verifyCronSecret(request: Request) {
   return request.headers.get("authorization") === `Bearer ${process.env.CRON_SECRET}`
@@ -102,6 +103,58 @@ export async function GET(request: Request) {
       }
     }
     settled++
+  }
+
+  // Reconcile: poll EventSettled logs and sync any settlements not yet reflected in DB
+  // This handles manual settlements (via script) and any missed cron runs
+  if (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS) {
+    const blockNumber = await publicClient.getBlockNumber()
+    const fromBlock = blockNumber > 10000n ? blockNumber - 10000n : 0n
+
+    const settledLogs = await publicClient.getLogs({
+      address: CONTRACT_ADDRESS,
+      event: parseAbiItem("event EventSettled(uint256 indexed eventId, uint8 result)"),
+      fromBlock,
+      toBlock: blockNumber,
+    })
+
+    const resultMap: Record<number, "home_win" | "away_win" | "draw"> = {
+      0: "home_win", 1: "away_win", 2: "draw",
+    }
+
+    for (const log of settledLogs) {
+      const { eventId, result: rawResult } = log.args as { eventId: bigint; result: number }
+      const resolvedResult = resultMap[rawResult]
+      if (!resolvedResult) continue
+
+      const [evt] = await db
+        .select()
+        .from(sports_events)
+        .where(eq(sports_events.on_chain_event_id, eventId.toString()))
+      if (!evt || evt.status === "completed") continue
+
+      // Sync event status to DB
+      await db
+        .update(sports_events)
+        .set({ status: "completed", result: resolvedResult })
+        .where(eq(sports_events.id, evt.id))
+
+      // Sync bet outcomes
+      const bets = await db.select().from(bet_cache).where(eq(bet_cache.event_id, evt.id))
+      for (const bet of bets) {
+        if (bet.status !== "pending") continue
+        let newStatus: "won" | "lost" | "refunded"
+        if (resolvedResult === "draw") {
+          newStatus = "refunded"
+        } else {
+          const betWon =
+            (resolvedResult === "home_win" && bet.side === "home") ||
+            (resolvedResult === "away_win" && bet.side === "away")
+          newStatus = betWon ? "won" : "lost"
+        }
+        await db.update(bet_cache).set({ status: newStatus }).where(eq(bet_cache.id, bet.id))
+      }
+    }
   }
 
   return Response.json({ settled })
