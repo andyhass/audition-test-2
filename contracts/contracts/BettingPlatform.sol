@@ -69,6 +69,49 @@ contract BettingPlatform is FunctionsClient, Ownable {
         functionsSource = _functionsSource;
     }
 
+    function depositLiquidity(uint256 amount) external onlyOwner {
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
+    function createEvent(
+        string calldata homeTeam,
+        string calldata awayTeam,
+        uint256 homeOdds,
+        uint256 awayOdds,
+        uint256 startTime,
+        string calldata externalId
+    ) external onlyOwner returns (uint256 eventId) {
+        eventId = nextEventId++;
+        events[eventId] = SportEvent({
+            id: eventId,
+            homeTeam: homeTeam,
+            awayTeam: awayTeam,
+            homeOdds: homeOdds,
+            awayOdds: awayOdds,
+            startTime: startTime,
+            status: EventStatus.OPEN,
+            externalId: externalId
+        });
+        emit EventCreated(eventId, homeTeam, awayTeam);
+    }
+
+    function updateOdds(
+        uint256 eventId,
+        uint256 homeOdds,
+        uint256 awayOdds
+    ) external onlyOwner {
+        SportEvent storage evt = events[eventId];
+        require(evt.status == EventStatus.OPEN, "Not open");
+        require(block.timestamp < evt.startTime, "Match started");
+        evt.homeOdds = homeOdds;
+        evt.awayOdds = awayOdds;
+        emit OddsUpdated(eventId, homeOdds, awayOdds);
+    }
+
+    function withdrawHouseFunds() external onlyOwner {
+        usdc.safeTransfer(owner(), usdc.balanceOf(address(this)));
+    }
+
     function fulfillRequest(
         bytes32, /* requestId */
         bytes memory, /* response */
