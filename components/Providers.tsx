@@ -11,6 +11,7 @@ import { WagmiProvider } from "wagmi"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionProvider } from "next-auth/react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { SiweMessage } from "siwe"
 import { signIn, signOut, getCsrfToken } from "next-auth/react"
 
@@ -27,7 +28,10 @@ export function Providers({
   children: React.ReactNode
   session: any
 }) {
-  const [authStatus, setAuthStatus] = useState<AuthenticationStatus>("unauthenticated")
+  const router = useRouter()
+  const [authStatus, setAuthStatus] = useState<AuthenticationStatus>(
+    session ? "authenticated" : "unauthenticated"
+  )
 
   const authAdapter = createAuthenticationAdapter({
     getNonce: async () => {
@@ -55,12 +59,14 @@ export function Providers({
       })
       const ok = result?.ok === true
       setAuthStatus(ok ? "authenticated" : "unauthenticated")
+      if (ok) router.refresh()
       return ok
     },
 
     signOut: async () => {
       await signOut({ redirect: false })
       setAuthStatus("unauthenticated")
+      router.refresh()
     },
   })
 
