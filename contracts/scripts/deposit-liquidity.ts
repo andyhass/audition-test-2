@@ -12,7 +12,7 @@ const USDC_ABI = [
 const PLATFORM_ABI = ["function depositLiquidity(uint256 amount) external"];
 
 // Amount to deposit — adjust as needed (default: 1000 USDC)
-const DEPOSIT_AMOUNT_USDC = 5n * 10n ** 6n;
+const DEPOSIT_AMOUNT_USDC = 4n * 10n ** 6n;
 
 async function main() {
   if (!CONTRACT_ADDRESS)
