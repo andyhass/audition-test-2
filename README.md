@@ -86,6 +86,25 @@ curl -X GET http://localhost:3000/api/cron/check-results \
 
 Reload **My Bets** — your bet will show as **won**, **lost**, or **refunded**. Winning payouts are transferred automatically on-chain at the time of settlement.
 
+### 8. Reset everything to a clean state
+
+To wipe all data and start fresh with a new contract deployment:
+
+```bash
+pnpm reset
+```
+
+This clears the database (bets, events, users), deploys a new `BettingPlatform.sol` contract to Base Sepolia, and updates `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` automatically. Afterwards, deposit liquidity into the new contract and re-sync fixtures:
+
+```bash
+cd contracts && pnpm deposit:sepolia && cd ..
+
+curl -X GET http://localhost:3000/api/cron/sync-events \
+  -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)"
+```
+
+> The reviewer's wallet must hold Base Sepolia ETH to cover gas for the new deployment, and Base Sepolia USDC to deposit liquidity. Both are available from the faucets listed in [Prerequisites](#prerequisites).
+
 ---
 
 ## Architecture
