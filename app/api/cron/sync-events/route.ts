@@ -21,19 +21,22 @@ interface SportsDBEvent {
   intEventFBAway?: string
 }
 
-// Returns decimal odds as string for DB storage (e.g., "1.8000")
-function parseDecimalOdds(odds: string | undefined): string | null {
-  if (!odds) return null
+const DEFAULT_ODDS = "2.0000" // even money fallback when API has no odds
+const DEFAULT_ODDS_BP = 20000n
+
+// Returns decimal odds as string for DB storage (e.g., "1.8000"), falling back to 2.00
+function parseDecimalOdds(odds: string | undefined): string {
+  if (!odds) return DEFAULT_ODDS
   const n = parseFloat(odds)
-  if (isNaN(n) || n <= 0) return null
+  if (isNaN(n) || n <= 0) return DEFAULT_ODDS
   return n.toFixed(4)
 }
 
-// Returns basis points for on-chain (e.g., 18000n for 1.80x)
-function decimalOddsToBasePts(odds: string | undefined): bigint | null {
-  if (!odds) return null
+// Returns basis points for on-chain (e.g., 18000n for 1.80x), falling back to 20000n
+function decimalOddsToBasePts(odds: string | undefined): bigint {
+  if (!odds) return DEFAULT_ODDS_BP
   const n = parseFloat(odds)
-  if (isNaN(n) || n <= 0) return null
+  if (isNaN(n) || n <= 0) return DEFAULT_ODDS_BP
   return BigInt(Math.round(n * 10000))
 }
 
@@ -101,13 +104,13 @@ export async function GET(request: Request) {
           }
         }
         created++
-      } else if (homeOddsDb && awayOddsDb && existing.on_chain_event_id) {
+      } else if (existing.on_chain_event_id) {
         await db
           .update(sports_events)
           .set({ home_odds: homeOddsDb, away_odds: awayOddsDb })
           .where(eq(sports_events.external_id, raw.idEvent))
         try {
-          await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOddsBp!, awayOddsBp!)
+          await updateOddsOnChain(BigInt(existing.on_chain_event_id), homeOddsBp, awayOddsBp)
         } catch (err) {
           console.error(`Failed to update odds for event ${raw.idEvent}:`, err)
         }
