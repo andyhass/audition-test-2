@@ -34,11 +34,19 @@ export function BetModal({ event, onClose }: BetModalProps) {
   const [amount, setAmount] = useState("")
   const [step, setStep] = useState<"pick" | "approving" | "betting" | "done">("pick")
 
-  const { writeContract, data: approveTxHash } = useWriteContract()
+  const { writeContract, data: approveTxHash, error: approveError } = useWriteContract()
   const { isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveTxHash })
 
-  const { writeContract: writeBet, data: betTxHash } = useWriteContract()
+  const { writeContract: writeBet, data: betTxHash, error: betError } = useWriteContract()
   const { isSuccess: betSuccess } = useWaitForTransactionReceipt({ hash: betTxHash })
+
+  useEffect(() => {
+    if (approveError) setStep("pick")
+  }, [approveError])
+
+  useEffect(() => {
+    if (betError) setStep("approving")
+  }, [betError])
 
   const amountNum = parseFloat(amount) || 0
 
