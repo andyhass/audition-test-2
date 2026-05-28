@@ -112,6 +112,31 @@ contract BettingPlatform is FunctionsClient, Ownable {
         usdc.safeTransfer(owner(), usdc.balanceOf(address(this)));
     }
 
+    function placeBet(uint256 eventId, BetSide side, uint256 amount) external {
+        SportEvent storage evt = events[eventId];
+        require(evt.status == EventStatus.OPEN, "Betting not open");
+        require(block.timestamp < evt.startTime, "Match already started");
+        require(amount > 0, "Amount must be positive");
+
+        uint256 odds = side == BetSide.HOME ? evt.homeOdds : evt.awayOdds;
+
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+
+        eventBets[eventId].push(Bet({
+            bettor: msg.sender,
+            side: side,
+            amount: amount,
+            oddsSnapshot: odds,
+            settled: false
+        }));
+
+        emit BetPlaced(eventId, msg.sender, side, amount, odds);
+    }
+
+    function getBets(uint256 eventId) external view returns (Bet[] memory) {
+        return eventBets[eventId];
+    }
+
     function fulfillRequest(
         bytes32, /* requestId */
         bytes memory, /* response */

@@ -112,4 +112,65 @@ describe("BettingPlatform", function () {
       await expect(platform.updateOdds(0n, 17500n, 22000n)).to.be.revertedWith("Match started")
     })
   })
+
+  describe("placeBet", function () {
+    async function withOpenEventFixture() {
+      const base = await loadFixture(deployFixture)
+      const { platform, usdc, owner, bettor } = base
+      const startTime = BigInt(Math.floor(Date.now() / 1000) + 7200)
+
+      // Fund house liquidity
+      await usdc.mint(owner.address, 10000n * 10n ** 6n)
+      await usdc.approve(await platform.getAddress(), 10000n * 10n ** 6n)
+      await platform.depositLiquidity(5000n * 10n ** 6n)
+
+      await platform.createEvent("Arsenal", "Chelsea", 18000n, 21000n, startTime, "1234567")
+
+      // Fund bettor
+      await usdc.mint(bettor.address, 500n * 10n ** 6n)
+      await usdc.connect(bettor).approve(await platform.getAddress(), 500n * 10n ** 6n)
+
+      return { ...base, startTime }
+    }
+
+    it("records the bet and transfers USDC", async function () {
+      const { platform, usdc, bettor } = await loadFixture(withOpenEventFixture)
+      const before = await usdc.balanceOf(await platform.getAddress())
+      await platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n) // 0 = HOME
+      const after = await usdc.balanceOf(await platform.getAddress())
+      expect(after - before).to.equal(100n * 10n ** 6n)
+
+      const bets = await platform.getBets(0n)
+      expect(bets.length).to.equal(1)
+      expect(bets[0].bettor).to.equal(bettor.address)
+      expect(bets[0].side).to.equal(0) // HOME
+      expect(bets[0].amount).to.equal(100n * 10n ** 6n)
+      expect(bets[0].oddsSnapshot).to.equal(18000n)
+      expect(bets[0].settled).to.equal(false)
+    })
+
+    it("emits BetPlaced", async function () {
+      const { platform, bettor } = await loadFixture(withOpenEventFixture)
+      await expect(
+        platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n)
+      ).to.emit(platform, "BetPlaced")
+        .withArgs(0n, bettor.address, 0, 100n * 10n ** 6n, 18000n)
+    })
+
+    it("reverts if match has started", async function () {
+      const { platform, bettor } = await loadFixture(withOpenEventFixture)
+      await hre.ethers.provider.send("evm_increaseTime", [10000])
+      await hre.ethers.provider.send("evm_mine", [])
+      await expect(
+        platform.connect(bettor).placeBet(0n, 0, 100n * 10n ** 6n)
+      ).to.be.revertedWith("Match already started")
+    })
+
+    it("reverts with zero amount", async function () {
+      const { platform, bettor } = await loadFixture(withOpenEventFixture)
+      await expect(
+        platform.connect(bettor).placeBet(0n, 0, 0n)
+      ).to.be.revertedWith("Amount must be positive")
+    })
+  })
 })
