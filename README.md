@@ -154,9 +154,6 @@ BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 # Set after deploying the contract (see below)
 NEXT_PUBLIC_CONTRACT_ADDRESS=
 
-# USDC on Base Sepolia (Circle official — do not change)
-NEXT_PUBLIC_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-
 # TheSportsDB API key (3 = free tier)
 THESPORTSDB_API_KEY=3
 ```
