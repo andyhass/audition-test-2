@@ -75,7 +75,7 @@ TheSportsDB API
 
 ---
 
-## Comprehensive Guide
+## Comprehensive Setup Guide
 
 ### 1. Install dependencies
 
@@ -238,7 +238,6 @@ pnpm reset
 ```
 
 This will:
-
 1. Truncate `bet_cache`, `sports_events`, and `users` (leagues are preserved)
 2. Deploy a new `BettingPlatform.sol` contract to Base Sepolia
 3. Deposit liquidity into the new contract
@@ -277,14 +276,14 @@ Then run `check-results` to sync the outcome back to the database.
 
 Located in `contracts/`. `BettingPlatform.sol` is deployed to Base Sepolia and owned by the admin wallet specified in `ADMIN_PRIVATE_KEY`.
 
-| Function             | Access | Description                                                     |
-| -------------------- | ------ | --------------------------------------------------------------- |
-| `createEvent`        | Owner  | Registers a match with teams, odds, and kick-off time           |
-| `updateOdds`         | Owner  | Updates odds before match start (does not affect existing bets) |
-| `placeBet`           | Public | Accepts USDC, locks odds at bet time                            |
-| `settle`             | Owner  | Pays winners at snapshotted odds; draws refund both sides       |
-| `depositLiquidity`   | Owner  | Deposits USDC to cover potential payouts                        |
-| `withdrawHouseFunds` | Owner  | Withdraws accumulated margin after settlement                   |
+| Function | Access | Description |
+|---|---|---|
+| `createEvent` | Owner | Registers a match with teams, odds, and kick-off time |
+| `updateOdds` | Owner | Updates odds before match start (does not affect existing bets) |
+| `placeBet` | Public | Accepts USDC, locks odds at bet time |
+| `settle` | Owner | Pays winners at snapshotted odds; draws refund both sides |
+| `depositLiquidity` | Owner | Deposits USDC to cover potential payouts |
+| `withdrawHouseFunds` | Owner | Withdraws accumulated margin after settlement |
 
 Odds are stored in basis points: `18000` = 1.80×. Payout = `amount × oddsSnapshot / 10000`.
 
@@ -292,26 +291,26 @@ Odds are stored in basis points: `18000` = 1.80×. Payout = `amount × oddsSnaps
 
 Run from the `contracts/` directory:
 
-| Script                                    | Description                  |
-| ----------------------------------------- | ---------------------------- |
-| `pnpm compile`                            | Compile Solidity             |
-| `pnpm test`                               | Run Hardhat tests (17 tests) |
-| `pnpm deploy:sepolia`                     | Deploy to Base Sepolia       |
-| `pnpm deposit:sepolia`                    | Deposit USDC liquidity       |
-| `EVENT_ID=N RESULT=R pnpm settle:sepolia` | Manually settle an event     |
+| Script | Description |
+|---|---|
+| `pnpm compile` | Compile Solidity |
+| `pnpm test` | Run Hardhat tests (17 tests) |
+| `pnpm deploy:sepolia` | Deploy to Base Sepolia |
+| `pnpm deposit:sepolia` | Deposit USDC liquidity |
+| `EVENT_ID=N RESULT=R pnpm settle:sepolia` | Manually settle an event |
 
 ---
 
 ## API Routes
 
-| Route                     | Method   | Auth        | Description                               |
-| ------------------------- | -------- | ----------- | ----------------------------------------- |
-| `/api/auth/[...nextauth]` | GET/POST | —           | Auth.js SIWE handler                      |
-| `/api/events`             | GET      | —           | All non-cancelled events with league info |
-| `/api/preferences`        | GET/PUT  | Session     | User timezone and league preferences      |
-| `/api/bets`               | POST     | Session     | Record a bet after on-chain placement     |
-| `/api/cron/sync-events`   | GET      | CRON_SECRET | Fetch and register upcoming fixtures      |
-| `/api/cron/check-results` | GET      | CRON_SECRET | Poll results and settle finished matches  |
+| Route | Method | Auth | Description |
+|---|---|---|---|
+| `/api/auth/[...nextauth]` | GET/POST | — | Auth.js SIWE handler |
+| `/api/events` | GET | — | All non-cancelled events with league info |
+| `/api/preferences` | GET/PUT | Session | User timezone and league preferences |
+| `/api/bets` | POST | Session | Record a bet after on-chain placement |
+| `/api/cron/sync-events` | GET | CRON_SECRET | Fetch and register upcoming fixtures |
+| `/api/cron/check-results` | GET | CRON_SECRET | Poll results and settle finished matches |
 
 ---
 
