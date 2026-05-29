@@ -6,15 +6,76 @@ A decentralized sports betting platform on Base Sepolia. Users authenticate with
 
 ## Quickstart
 
-> The `.env.local` file has been shared with you separately. It contains a pre-configured Neon database, a deployed contract on Base Sepolia, and all required secrets. Follow these steps to run the app end-to-end.
+> A prefilled `.env.local` file is included. It contains a pre-configured Neon database, a deployed contract on Base Sepolia, and all required secrets. You can immediately bet on events/fixtures following the steps below.
 
-### Prerequisites
+1. Run the app — `pnpm install && cd contracts && pnpm install && cd .. && pnpm dev`
+2. Navigate to http://localhost:3000
+3. Connect your wallet
+4. Choose an event and bet. Note: the contract has 4 USDC in liquidity — do not bet more than 4 USDC.
+5. Manually settle the bet: `cd contracts && EVENT_ID=0 RESULT=0 pnpm settle:sepolia`
+6. Sync the result to the database: `curl -X GET http://localhost:3000/api/cron/check-results -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)"`
+7. Reload **My Bets** to see the outcome.
+
+To reset all data (clear the database and redeploy a fresh contract), run `pnpm reset`. The admin wallet (`ADMIN_PRIVATE_KEY` in `.env.local`) covers gas and liquidity automatically. To fund the admin wallet, send USDC to `0x08b75Eec22a2F16918Dade687aD7B1F737e43456`.
+
+---
+
+## Prerequisites
 
 - Node.js 20+
 - pnpm (`npm install -g pnpm`)
 - [MetaMask](https://metamask.io) browser extension
 - Base Sepolia ETH for gas — [Coinbase faucet](https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet)
 - Base Sepolia USDC for betting — [Circle faucet](https://faucet.circle.com) (select Base Sepolia)
+
+---
+
+## Architecture
+
+- **Frontend** — Next.js 16 (App Router), React 19, Tailwind 4, RainbowKit + wagmi
+- **Auth** — Sign In with Ethereum via Auth.js v5
+- **Database** — Neon serverless Postgres via Drizzle ORM
+- **Smart contract** — Solidity 0.8.24, deployed to Base Sepolia via Hardhat
+- **Data source** — TheSportsDB API (fixtures and results)
+- **Workers** — Two Vercel Cron jobs: hourly fixture sync, 5-minute result polling
+
+### Data flow
+
+```
+TheSportsDB API
+      │
+      │  sync-events cron (hourly)
+      ▼
+  Database (Neon Postgres)          Smart Contract (Base Sepolia)
+  ─────────────────────────         ─────────────────────────────
+  leagues                           BettingPlatform.sol
+  sports_events  ◄────────────────► on_chain_event_id links the two
+  users                             events, bets, settlement state
+  bet_cache
+      │
+      │  Server components / API routes
+      ▼
+  Frontend (Next.js)
+  ─────────────────
+  Events feed (reads DB)
+  Bet modal (writes to contract via wagmi, then records in DB)
+  My Bets (reads bet_cache from DB)
+      │
+      │  check-results cron (every 5 min)
+      ▼
+  TheSportsDB API → result → settle() on contract → update bet_cache
+```
+
+**Key relationships:**
+
+- **Frontend ↔ Database** — server components query the DB directly via Drizzle ORM. The events feed, user preferences, and bet history are all served from Postgres without hitting the RPC on every page load.
+- **Frontend ↔ Smart contract** — the bet modal uses wagmi/viem to write directly to the contract from the user's wallet. Two transactions are required: `approve` (grant the contract permission to spend USDC) and `placeBet` (execute the transfer and record the bet on-chain).
+- **Database ↔ Smart contract** — the `on_chain_event_id` column links a DB event row to its on-chain counterpart. After a bet is placed on-chain, the frontend POSTs the tx hash and details to `/api/bets`, which writes a mirror row to `bet_cache`. This means the My Bets page can be served from Postgres without RPC calls.
+- **Workers** — `sync-events` is the bridge from TheSportsDB into both the DB and the contract. `check-results` is the bridge from TheSportsDB back out: it detects finished matches, calls `settle()` on the contract (which transfers USDC to winners), and updates `bet_cache` so the UI reflects the outcome.
+
+---
+
+## Comprehensive Guide
 
 ### 1. Install dependencies
 
@@ -23,11 +84,7 @@ pnpm install
 cd contracts && pnpm install && cd ..
 ```
 
-### 2. Place the .env.local file
-
-Put the provided `.env.local` in the project root (next to `package.json`).
-
-### 3. Start the dev server
+### 2. Start the dev server
 
 ```bash
 pnpm dev
@@ -35,7 +92,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### 4. Load fixtures
+### 3. Load fixtures
 
 In a separate terminal, trigger the fixture sync:
 
@@ -46,7 +103,9 @@ curl -X GET http://localhost:3000/api/cron/sync-events \
 
 Reload the page — match cards for upcoming UCL and MLS fixtures will appear.
 
-### 5. Connect your wallet and place a bet
+> Match cards are only clickable when registered on-chain. If a card appears greyed out after syncing, re-run the sync command — it will register any events that were missed.
+
+### 4. Connect your wallet and place a bet
 
 1. Click **Connect Wallet** in the top-right corner
 2. Approve the Sign In with Ethereum prompt in MetaMask
@@ -57,9 +116,7 @@ Reload the page — match cards for upcoming UCL and MLS fixtures will appear.
 7. Click **Place Bet** → confirm in MetaMask
 8. Click **My Bets** in the nav to see your open position
 
-> Match cards are only clickable when they have been registered on-chain. If a card appears greyed out after syncing, re-run the sync command — it will register any events that were missed.
-
-### 6. Settle a bet (test without waiting for a real result)
+### 5. Settle a bet (test without waiting for a real result)
 
 Find the on-chain event ID for the match you bet on:
 
@@ -77,7 +134,7 @@ EVENT_ID=0 RESULT=1 pnpm settle:sepolia   # 1 = away win
 EVENT_ID=0 RESULT=2 pnpm settle:sepolia   # 2 = draw — refunds all bets
 ```
 
-### 7. Sync the result to the database
+### 6. Sync the result to the database
 
 ```bash
 curl -X GET http://localhost:3000/api/cron/check-results \
@@ -86,41 +143,26 @@ curl -X GET http://localhost:3000/api/cron/check-results \
 
 Reload **My Bets** — your bet will show as **won**, **lost**, or **refunded**. Winning payouts are transferred automatically on-chain at the time of settlement.
 
-### 8. Reset everything to a clean state
-
-To wipe all data and start fresh with a new contract deployment:
+### 7. Reset everything to a clean state
 
 ```bash
 pnpm reset
 ```
 
-This clears the database (bets, events, users), deploys a new `BettingPlatform.sol` contract to Base Sepolia, and updates `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` automatically. Afterwards, deposit liquidity into the new contract and re-sync fixtures:
+This clears the database (bets, events, users), deploys a new `BettingPlatform.sol` contract, deposits liquidity, and updates `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` automatically. Re-sync fixtures afterwards:
 
 ```bash
-cd contracts && pnpm deposit:sepolia && cd ..
-
 curl -X GET http://localhost:3000/api/cron/sync-events \
   -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)"
 ```
 
-> The admin wallet (included in `.env.local` via `ADMIN_PRIVATE_KEY`) covers gas for the deployment and USDC for liquidity — no additional funding is required for the reset. Your personal MetaMask wallet still needs Base Sepolia ETH and USDC to place bets.
-
----
-
-## Architecture
-
-- **Frontend** — Next.js 16 (App Router), React 19, Tailwind 4, RainbowKit + wagmi
-- **Auth** — Sign In with Ethereum via Auth.js v5
-- **Database** — Neon serverless Postgres via Drizzle ORM
-- **Smart contract** — Solidity 0.8.24, deployed to Base Sepolia via Hardhat
-- **Data source** — TheSportsDB API (fixtures and results)
-- **Workers** — Two Vercel Cron jobs: hourly fixture sync, 5-minute result polling
+> The admin wallet (`ADMIN_PRIVATE_KEY`) covers gas and liquidity for the reset. Your personal MetaMask wallet still needs Base Sepolia ETH and USDC to place bets.
 
 ---
 
 ## Full Local Setup
 
-Follow this section if you are setting up the project from scratch without the provided `.env.local`.
+Follow this section if setting up from scratch without the provided `.env.local`.
 
 ### 1. Install dependencies
 
@@ -175,11 +217,10 @@ Copy the deployed address into `.env.local` as `NEXT_PUBLIC_CONTRACT_ADDRESS`.
 
 ### 5. Fund the contract with liquidity
 
-The contract must hold USDC to pay out winning bets. Get testnet USDC from the [Circle faucet](https://faucet.circle.com), then deposit:
+Get testnet USDC from the [Circle faucet](https://faucet.circle.com), then deposit:
 
 ```bash
-cd contracts
-pnpm deposit:sepolia   # deposits 5 USDC by default — edit DEPOSIT_AMOUNT_USDC to change
+cd contracts && pnpm deposit:sepolia
 ```
 
 ### 6. Start the dev server
@@ -192,23 +233,16 @@ pnpm dev
 
 ## Resetting to a Clean State
 
-`pnpm reset` wipes all data and starts fresh with a new contract deployment:
-
 ```bash
 pnpm reset
 ```
 
 This will:
-1. Truncate `bet_cache`, `sports_events`, and `users` in the database (leagues are preserved)
+1. Truncate `bet_cache`, `sports_events`, and `users` (leagues are preserved)
 2. Deploy a new `BettingPlatform.sol` contract to Base Sepolia
-3. Update `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` automatically
-4. Trigger a fixture sync if the dev server is running
-
-After reset, deposit liquidity into the new contract:
-
-```bash
-cd contracts && pnpm deposit:sepolia
-```
+3. Deposit liquidity into the new contract
+4. Update `NEXT_PUBLIC_CONTRACT_ADDRESS` in `.env.local` automatically
+5. Trigger a fixture sync if the dev server is running
 
 ---
 
@@ -229,10 +263,6 @@ curl -X GET http://localhost:3000/api/cron/check-results \
 
 ```bash
 cd contracts
-
-# Find the on_chain_event_id:
-# SELECT home_team, away_team, on_chain_event_id FROM sports_events ORDER BY match_time;
-
 EVENT_ID=0 RESULT=0 pnpm settle:sepolia   # 0 = home win
 EVENT_ID=0 RESULT=1 pnpm settle:sepolia   # 1 = away win
 EVENT_ID=0 RESULT=2 pnpm settle:sepolia   # 2 = draw (refunds all bets)
